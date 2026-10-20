@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rfid-forensics"
+version = "0.1.0"
+description = "HF contactless card forensic analysis tool for law enforcement"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [
+    {name = "Ryan Massfeller"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Law Enforcement",
+    "Topic :: Security",
+    "Programming Language :: Python :: 3",
+]
+
+[project.scripts]
+rfid-forensics = "rfid_forensics.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[tool.setuptools.packages.find]
+include = ["rfid_forensics*"]
