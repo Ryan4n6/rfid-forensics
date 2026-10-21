@@ -39,7 +39,7 @@ KNOWN_KEYS: dict[str, dict] = {
                  "Vendor unconfirmed. Single-property sample.",
     },
 
-    # NXP defaults
+    # NXP defaults and transport keys
     "FFFFFFFFFFFF": {
         "vendor": "NXP (factory default)",
         "system": "Unkeyed / factory default",
@@ -69,6 +69,54 @@ KNOWN_KEYS: dict[str, dict] = {
         "system": "NDEF public key",
         "confidence": "confirmed",
         "notes": "NFC Forum NDEF application Key A.",
+    },
+    "A0B0C0D0E0F0": {
+        "vendor": "NXP (transport key)",
+        "system": "Factory transport key",
+        "confidence": "confirmed",
+        "notes": "Alternate NXP factory transport key.",
+    },
+    "A1B1C1D1E1F1": {
+        "vendor": "NXP (transport key)",
+        "system": "Factory transport key",
+        "confidence": "confirmed",
+        "notes": "Alternate NXP factory transport key.",
+    },
+    "AABBCCDDEEFF": {
+        "vendor": "NXP (transport key)",
+        "system": "Factory transport key",
+        "confidence": "confirmed",
+        "notes": "Alternate NXP factory transport key.",
+    },
+    "4D3A99C351DD": {
+        "vendor": "NXP (transport key)",
+        "system": "Factory transport key",
+        "confidence": "confirmed",
+        "notes": "NXP transport key found on some tag batches.",
+    },
+    "1A982C7E459A": {
+        "vendor": "NXP (transport key)",
+        "system": "Factory transport key",
+        "confidence": "confirmed",
+        "notes": "NXP transport key found on some tag batches.",
+    },
+
+    # Fudan Microelectronics (FM) MIFARE Classic clones
+    "A396EFA4E24F": {
+        "vendor": "Fudan FM11RF08S",
+        "system": "Hardware backdoor key",
+        "confidence": "confirmed",
+        "notes": "Universal backdoor key for FM11RF08S chips (Chinese MIFARE Classic clone). "
+                 "Disclosed by Philippe Teuwen, Quarkslab, August 2024. Allows reading all "
+                 "sectors regardless of configured keys. Forensic significance: if this key "
+                 "works, the card uses a Fudan clone chip, not genuine NXP silicon.",
+    },
+    "A31667A8CEC1": {
+        "vendor": "Fudan FM11RF08",
+        "system": "Hardware backdoor key",
+        "confidence": "confirmed",
+        "notes": "Backdoor key for older FM11RF08 chips (Chinese MIFARE Classic clone). "
+                 "Disclosed by Philippe Teuwen, Quarkslab, August 2024.",
     },
 
     # Transit systems (public knowledge)

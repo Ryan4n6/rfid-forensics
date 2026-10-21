@@ -77,7 +77,7 @@ rfid-forensics hexdump dump.json
 
 The tool ships with known keys for:
 
-- **Dormakaba/Saflok** (hotel locks)
+- **Hotel lock systems** (key patterns from real-world samples, vendor unconfirmed)
 - **NXP factory defaults** and MAD keys
 - **HID iCLASS SE** (access control)
 - **Transit systems** (various)
@@ -89,7 +89,7 @@ Add your own keys with `--vendor-keys file.txt` (format: `KEY_HEX:vendor:system`
 
 A hotel key card recovered during a search warrant execution currently tells the investigator nothing without specialized knowledge. This tool bridges that gap:
 
-1. **Triage**: Card recovered at scene. Examiner runs `rfid-forensics analyze dump.json`. Report says "Dormakaba/Saflok hotel lock, 6 door events between 15:33 and 16:18, lock ID 0xAE43."
+1. **Triage**: Card recovered at scene. Examiner runs `rfid-forensics analyze dump.json`. Report says "Hotel lock system, 6 door events between 15:33 and 16:18, lock ID 0xAE43."
 
 2. **Corroboration**: Investigator subpoenas the hotel PMS and lock audit trail. Card's onboard audit log provides independent corroboration of server-side records.
 
