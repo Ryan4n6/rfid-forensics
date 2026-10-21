@@ -12,7 +12,7 @@ Built for law enforcement digital forensics. No existing tool does this.
 - **Credential identification**: Identifies which sector holds the access authorization token
 - **Chain of custody**: Full examiner metadata, SHA-256 file hashing, acquisition method documentation
 - **Dump comparison**: Diff two cards from the same property to isolate per-card vs shared fields
-- **Court-ready output**: Plain language report with raw hex evidence, or structured JSON for case management systems
+- **Court-ready output**: PDF reports with formatted tables, chain of custody, and page headers. Also plain text and JSON
 
 ## Install
 
@@ -22,6 +22,11 @@ pip install -e .
 
 Requires Python 3.10+. No external dependencies for core functionality.
 
+For PDF report output:
+```
+pip install -e ".[pdf]"
+```
+
 ## Usage
 
 ### Full forensic analysis
@@ -29,6 +34,7 @@ Requires Python 3.10+. No external dependencies for core functionality.
 ```
 rfid-forensics analyze dump.json
 rfid-forensics analyze dump.bin --format json
+rfid-forensics analyze dump.json --format pdf -o report.pdf
 rfid-forensics analyze dump.json -o report.txt
 ```
 

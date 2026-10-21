@@ -183,6 +183,41 @@ class TestReport:
         assert "2026-TEST-001" in report
 
 
+    def test_pdf_report(self, card_json, tmp_path):
+        ka = analyze_keys(card_json)
+        sa = analyze_structure(card_json)
+        from rfid_forensics.pdf_report import check_reportlab, generate_pdf
+
+        if not check_reportlab():
+            pytest.skip("reportlab not installed")
+
+        pdf_path = str(tmp_path / "test-report.pdf")
+        result = generate_pdf(card_json, ka, sa, pdf_path)
+        assert Path(result).exists()
+        assert Path(result).stat().st_size > 0
+        with open(pdf_path, "rb") as f:
+            header = f.read(5)
+            assert header == b"%PDF-"
+
+    def test_pdf_with_custody(self, card_json, tmp_path):
+        ka = analyze_keys(card_json)
+        sa = analyze_structure(card_json)
+        from rfid_forensics.pdf_report import check_reportlab, generate_pdf
+
+        if not check_reportlab():
+            pytest.skip("reportlab not installed")
+
+        custody = ChainOfCustody(
+            examiner_name="Test Examiner",
+            agency="Test PD",
+            case_number="2026-TEST-001",
+        )
+        pdf_path = str(tmp_path / "test-custody.pdf")
+        result = generate_pdf(card_json, ka, sa, pdf_path, custody)
+        assert Path(result).exists()
+        assert Path(result).stat().st_size > 0
+
+
 class TestDiff:
     def test_self_diff(self, card_json):
         """Comparing a card to itself should show no differences."""

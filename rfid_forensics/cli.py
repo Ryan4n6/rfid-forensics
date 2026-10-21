@@ -25,7 +25,7 @@ def main():
     p_analyze = subparsers.add_parser("analyze", help="Analyze a MIFARE Classic dump file")
     p_analyze.add_argument("dump", help="Path to dump file (.json, .bin, .mfd)")
     p_analyze.add_argument("-o", "--output", help="Write report to file instead of stdout")
-    p_analyze.add_argument("--format", choices=["text", "json"], default="text",
+    p_analyze.add_argument("--format", choices=["text", "json", "pdf"], default="text",
                            help="Output format (default: text)")
     p_analyze.add_argument("--vendor-keys", help="Additional vendor key file (key:vendor:system per line)")
     p_analyze.add_argument("--examiner", help="Examiner name for chain of custody")
@@ -97,13 +97,25 @@ def _cmd_analyze(args):
             date_acquired=args.acquired or "",
         )
 
-    report = generate_report(card, key_analysis, structure, custody, args.format)
+    if args.format == "pdf":
+        from .pdf_report import check_reportlab, generate_pdf
 
-    if args.output:
-        Path(args.output).write_text(report)
-        print(f"Report written to {args.output}")
+        if not check_reportlab():
+            print("Error: PDF output requires reportlab. Install with: pip install reportlab",
+                  file=sys.stderr)
+            sys.exit(1)
+
+        output = args.output or f"rfid-report-{card.uid}.pdf"
+        generate_pdf(card, key_analysis, structure, output, custody)
+        print(f"PDF report written to {output}")
     else:
-        print(report)
+        report = generate_report(card, key_analysis, structure, custody, args.format)
+
+        if args.output:
+            Path(args.output).write_text(report)
+            print(f"Report written to {args.output}")
+        else:
+            print(report)
 
 
 def _cmd_diff(args):

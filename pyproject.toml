@@ -23,6 +23,7 @@ classifiers = [
 rfid-forensics = "rfid_forensics.cli:main"
 
 [project.optional-dependencies]
+pdf = ["reportlab>=4.0"]
 dev = ["pytest>=7.0"]
 
 [tool.setuptools.packages.find]
