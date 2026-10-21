@@ -64,7 +64,7 @@ class TestDumpLoader:
 class TestKeyFingerprint:
     def test_vendor_detection(self, card_json):
         analysis = analyze_keys(card_json)
-        assert analysis.vendor_guess == "Dormakaba/Saflok"
+        assert analysis.vendor_guess == "Hotel lock system"
 
     def test_system_detection(self, card_json):
         analysis = analyze_keys(card_json)
@@ -158,7 +158,7 @@ class TestReport:
         assert "AUDIT LOG" in report
         assert "FORENSIC NOTES" in report
         assert "INVESTIGATIVE LEADS" in report
-        assert "Dormakaba" in report
+        assert "Hotel lock system" in report
 
     def test_json_report_valid(self, card_json):
         ka = analyze_keys(card_json)
@@ -166,7 +166,7 @@ class TestReport:
         report = generate_report(card_json, ka, sa, output_format="json")
         data = json.loads(report)
         assert data["card"]["uid"] == "21A420BD"
-        assert data["vendor"]["guess"] == "Dormakaba/Saflok"
+        assert data["vendor"]["guess"] == "Hotel lock system"
         assert data["audit_log"]["record_count"] == 6
 
     def test_chain_of_custody(self, card_json):

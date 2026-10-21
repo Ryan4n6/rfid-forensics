@@ -283,17 +283,15 @@ def _generate_forensic_notes(card, key_analysis, structure):
 def _generate_leads(card, key_analysis, structure):
     leads = []
 
-    if key_analysis.vendor_guess and "Dormakaba" in key_analysis.vendor_guess:
-        leads.append(
-            "Property likely uses Dormakaba/Saflok locks. Subpoena the property management "
-            "system (PMS) and lock audit trail. Dormakaba System 6000 retains up to 1,000 "
-            "events per lock."
-        )
-
     if key_analysis.vendor_guess and "hotel" in (key_analysis.system_guess or "").lower():
         leads.append(
             "Hotel key card. The property's front desk system will have the guest folio "
             "(name, dates, room number, payment) tied to this card's UID or encoding session."
+        )
+        leads.append(
+            "Subpoena the property management system (PMS) and lock audit trail. "
+            "Common hotel lock platforms (Dormakaba System 6000, ASSA ABLOY Visionline, "
+            "Onity HT) retain hundreds to thousands of events per lock."
         )
 
     if structure.has_audit_log:

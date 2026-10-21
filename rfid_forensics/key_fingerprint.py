@@ -22,18 +22,21 @@ class KeyMatch:
 # Sources: public disclosures, published research, CTF write-ups, vendor documentation.
 # Keys here are already public knowledge.
 KNOWN_KEYS: dict[str, dict] = {
-    # Hotel lock systems
+    # Hotel lock systems (single-property sample, vendor unconfirmed)
     "6AF1A9F09615": {
-        "vendor": "Dormakaba/Saflok",
+        "vendor": "Hotel lock system",
         "system": "Hotel lock (property master key)",
-        "confidence": "likely",
-        "notes": "Common across Saflok-equipped properties. Shared on all sectors except room-specific data.",
+        "confidence": "possible",
+        "notes": "Observed as property-wide Key A on a MIFARE Classic 1K hotel card. "
+                 "Vendor unconfirmed (could be Dormakaba/Saflok, ASSA ABLOY, or other). "
+                 "Single-property sample, needs more data points.",
     },
     "2A2C13CC242A": {
-        "vendor": "Dormakaba/Saflok",
-        "system": "Hotel lock (room data sector)",
-        "confidence": "likely",
-        "notes": "Per-property or per-lock-group key for guest credential sector.",
+        "vendor": "Hotel lock system",
+        "system": "Hotel lock (room credential sector)",
+        "confidence": "possible",
+        "notes": "Observed as sector-specific Key A on a hotel card's guest data sector. "
+                 "Vendor unconfirmed. Single-property sample.",
     },
 
     # NXP defaults
@@ -180,7 +183,7 @@ def analyze_keys(card: MfcCard) -> KeyAnalysis:
     if pick_from:
         vendor_guess = max(pick_from, key=pick_from.get)
         for m in matches:
-            if m.vendor.startswith(vendor_guess) and m.confidence in ("confirmed", "likely"):
+            if m.vendor.startswith(vendor_guess):
                 system_guess = m.system
                 break
 
