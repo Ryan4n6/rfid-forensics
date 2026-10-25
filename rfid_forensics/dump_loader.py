@@ -1,10 +1,13 @@
 """Load MIFARE Classic dump files from various formats."""
 
 import json
+import logging
 import struct
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -116,6 +119,7 @@ def load_bin(path: Path) -> MfcCard:
     """Load a raw binary MIFARE Classic dump (1024 or 4096 bytes)."""
     raw = path.read_bytes()
     if len(raw) not in (1024, 4096):
+        log.error("invalid binary dump size %d bytes: %s", len(raw), path)
         raise ValueError(f"Invalid dump size: {len(raw)} bytes (expected 1024 or 4096)")
 
     blocks = {}
@@ -160,21 +164,29 @@ def load_dump(path: str | Path) -> MfcCard:
 
     import hashlib
     file_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+    log.info("source %s sha256=%s", path.resolve(), file_hash)
 
     if path.suffix == ".json":
+        fmt = "json (by extension)"
         card = load_json(path)
     elif path.suffix in (".bin", ".dump", ".mfd"):
+        fmt = "binary (by extension)"
         card = load_bin(path)
     else:
         raw = path.read_bytes()
         if len(raw) in (1024, 4096):
+            fmt = f"binary (by size, {len(raw)} bytes)"
             card = load_bin(path)
         else:
             try:
+                fmt = "json (fallback parse)"
                 card = load_json(path)
             except (json.JSONDecodeError, KeyError):
+                log.error("cannot determine format of %s (%d bytes)", path, len(raw))
                 raise ValueError(f"Cannot determine format of {path}")
 
     card.source_file = str(path.resolve())
     card.source_hash = file_hash
+    log.info("loaded %s: uid=%s type=%s blocks=%d keyed_sectors=%d",
+             fmt, card.uid, card.card_type, len(card.blocks), len(card.sector_keys))
     return card

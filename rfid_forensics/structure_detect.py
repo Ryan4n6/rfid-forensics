@@ -1,9 +1,12 @@
 """Detect data structures, audit logs, and repeating records in card dumps."""
 
+import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
 from .dump_loader import MfcCard
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -83,6 +86,7 @@ def verify_checksum_mod256(record: bytes) -> bool:
 def detect_audit_records(card: MfcCard) -> list[AuditRecord]:
     """Detect 8-byte audit records with mod-256 checksums in data sectors."""
     records = []
+    rejected = 0
 
     for sector in card.data_sectors():
         for blk in card.sector_data_blocks(sector):
@@ -95,28 +99,37 @@ def detect_audit_records(card: MfcCard) -> list[AuditRecord]:
                 if chunk == b'\x00' * 8:
                     continue
 
-                if verify_checksum_mod256(chunk):
-                    lock_id = int.from_bytes(chunk[0:2], "big")
-                    counter = int.from_bytes(chunk[2:4], "big")
-                    event_type = chunk[4]
-                    param = int.from_bytes(chunk[5:7], "big")
-                    checksum = chunk[7]
+                if not verify_checksum_mod256(chunk):
+                    rejected += 1
+                    log.debug("block %d+%d %s failed mod-256 checksum, not an audit record",
+                              blk, offset, chunk.hex())
+                    continue
 
-                    record = AuditRecord(
-                        sector=sector,
-                        block=blk,
-                        offset=offset,
-                        raw=chunk,
-                        lock_id=lock_id,
-                        counter=counter,
-                        event_type=event_type,
-                        param=param,
-                        checksum=checksum,
-                        checksum_valid=True,
-                        event_label=EVENT_TYPES.get(event_type),
-                    )
-                    records.append(record)
+                lock_id = int.from_bytes(chunk[0:2], "big")
+                counter = int.from_bytes(chunk[2:4], "big")
+                event_type = chunk[4]
+                param = int.from_bytes(chunk[5:7], "big")
+                checksum = chunk[7]
 
+                record = AuditRecord(
+                    sector=sector,
+                    block=blk,
+                    offset=offset,
+                    raw=chunk,
+                    lock_id=lock_id,
+                    counter=counter,
+                    event_type=event_type,
+                    param=param,
+                    checksum=checksum,
+                    checksum_valid=True,
+                    event_label=EVENT_TYPES.get(event_type),
+                )
+                records.append(record)
+                log.debug("audit record at block %d+%d: lock=0x%04X counter=%d event=0x%02X",
+                          blk, offset, lock_id, counter, event_type)
+
+    log.info("audit scan: %d record(s) accepted, %d non-zero chunk(s) failed checksum",
+             len(records), rejected)
     return records
 
 
@@ -129,6 +142,7 @@ def flag_duplicate_records(records: list[AuditRecord]) -> list[AuditRecord]:
     for i, r in enumerate(records):
         if r.raw in first_seen:
             r.duplicate_of = first_seen[r.raw]
+            log.info("record [%d] is a duplicate of [%d] (%s)", i, r.duplicate_of, r.raw.hex())
         else:
             first_seen[r.raw] = i
     return records
@@ -149,6 +163,7 @@ def try_timestamp_decode(records: list[AuditRecord]) -> list[AuditRecord]:
     if all(0 <= c <= 86400 for c in counters):
         is_monotonic = all(counters[i] <= counters[i + 1] for i in range(len(counters) - 1))
         if is_monotonic or len(records) == 1:
+            log.info("timestamp heuristic: seconds from midnight (%d record(s), monotonic)", len(records))
             for r in records:
                 hours = r.counter // 3600
                 minutes = (r.counter % 3600) // 60
@@ -158,13 +173,20 @@ def try_timestamp_decode(records: list[AuditRecord]) -> list[AuditRecord]:
                 else:
                     r.timestamp_guess = f"{r.counter}s from midnight (>{hours}h, unusual)"
 
+        else:
+            log.info("timestamp heuristic: none, counters in day range but not monotonic")
+
     elif all(0 <= c <= 86400 * 365 for c in counters):
+        log.info("timestamp heuristic: seconds from epoch, base unknown (%d record(s))", len(records))
         for r in records:
             days = r.counter // 86400
             rem = r.counter % 86400
             hours = rem // 3600
             minutes = (rem % 3600) // 60
             r.timestamp_guess = f"Day {days}, {hours:02d}:{minutes:02d} (seconds from epoch?)"
+
+    else:
+        log.info("timestamp heuristic: none, counters exceed one year of seconds")
 
     return records
 
@@ -193,6 +215,7 @@ def detect_credential_sector(card: MfcCard) -> Optional[int]:
             key_counts[ka] = key_counts.get(ka, 0) + 1
 
     if not key_counts:
+        log.info("credential sector: none, every Key A is default or missing")
         return None
 
     master_key = max(key_counts, key=key_counts.get)
@@ -200,8 +223,10 @@ def detect_credential_sector(card: MfcCard) -> Optional[int]:
     for sector in card.data_sectors():
         ka = card.sector_keys.get(sector, {}).get("KeyA", "").upper()
         if ka and ka != master_key and ka != "FFFFFFFFFFFF":
+            log.info("credential sector: %d (Key A %s differs from master %s)", sector, ka, master_key)
             return sector
 
+    log.info("credential sector: none, no data sector has a Key A other than master %s", master_key)
     return None
 
 
@@ -310,6 +335,7 @@ def analyze_structure(card: MfcCard) -> StructureAnalysis:
 
     # Two copies of one record is not a log, so presence is judged on distinct records.
     has_audit = distinct >= 2
+    log.info("audit log present=%s (%d record(s), %d distinct)", has_audit, len(audit_records), distinct)
     audit_sector = None
     if audit_records:
         sector_counts: dict[int, int] = {}

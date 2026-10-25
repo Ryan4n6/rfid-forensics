@@ -1,12 +1,15 @@
 """Tests for rfid-forensics using the Caribe Royale hotel key dump as ground truth."""
 
 import json
+import logging
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from rfid_forensics.dump_loader import load_dump, load_json, load_bin
-from rfid_forensics.key_fingerprint import analyze_keys
+from rfid_forensics.key_fingerprint import analyze_keys, load_vendor_keys
 from rfid_forensics.structure_detect import (
     _interpret_atqa,
     analyze_structure,
@@ -318,6 +321,69 @@ class TestAtqa:
 
     def test_no_manufacturer_claim(self, card_json):
         assert "NXP" not in self._atqa_field(card_json).interpretation
+
+
+class TestLogging:
+    """Issue #4: every analysis decision is logged under the rfid_forensics logger."""
+
+    def _run(self, card, caplog):
+        caplog.set_level(logging.DEBUG, logger="rfid_forensics")
+        analyze_keys(card)
+        analyze_structure(card)
+        return "\n".join(r.getMessage() for r in caplog.records if r.name.startswith("rfid_forensics"))
+
+    def test_load_logs_hash(self, caplog):
+        caplog.set_level(logging.DEBUG, logger="rfid_forensics")
+        card = load_dump(JSON_DUMP)
+        assert card.source_hash in caplog.text
+
+    def test_vendor_decision_logged(self, card_json, caplog):
+        text = self._run(card_json, caplog)
+        assert "vendor guess: Hotel lock system" in text
+
+    def test_unattributed_logged(self, caplog):
+        text = self._run(load_dump(SYNTHETIC), caplog)
+        assert "vendor unattributed" in text
+
+    def test_duplicate_logged(self, card_json, caplog):
+        text = self._run(card_json, caplog)
+        assert "record [4] is a duplicate of [3]" in text
+
+    def test_timestamp_branch_logged(self, card_json, caplog):
+        text = self._run(card_json, caplog)
+        assert "timestamp heuristic: seconds from midnight" in text
+
+    def test_missing_vendor_key_file_warns(self, tmp_path, caplog):
+        caplog.set_level(logging.WARNING, logger="rfid_forensics")
+        assert load_vendor_keys(tmp_path / "nope.txt") == {}
+        assert "vendor key file not found" in caplog.text
+
+    def test_malformed_vendor_key_line_warns(self, tmp_path, caplog):
+        caplog.set_level(logging.WARNING, logger="rfid_forensics")
+        f = tmp_path / "keys.txt"
+        f.write_text("AABBCCDDEE01:Vendor:System\nnot-a-key-line\n")
+        assert list(load_vendor_keys(f)) == ["AABBCCDDEE01"]
+        assert "line 2" in caplog.text
+
+    def test_cli_log_file(self, tmp_path):
+        log_path = tmp_path / "analysis.log"
+        out = subprocess.run(
+            [sys.executable, "-m", "rfid_forensics", "analyze", str(JSON_DUMP),
+             "--format", "json", "--log-file", str(log_path)],
+            capture_output=True, text=True, check=True,
+        )
+        json.loads(out.stdout)
+        log = log_path.read_text()
+        assert "[rfid-forensics]" in log
+        assert load_dump(JSON_DUMP).source_hash in log
+        assert "vendor guess" in log
+
+    def test_cli_quiet_by_default(self):
+        out = subprocess.run(
+            [sys.executable, "-m", "rfid_forensics", "audit", str(JSON_DUMP)],
+            capture_output=True, text=True, check=True,
+        )
+        assert out.stderr == ""
 
 
 class TestDiff:

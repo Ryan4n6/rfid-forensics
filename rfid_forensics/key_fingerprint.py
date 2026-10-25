@@ -1,10 +1,13 @@
 """Fingerprint MIFARE Classic keys against known vendor databases."""
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 from .dump_loader import MfcCard
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -216,11 +219,14 @@ def analyze_keys(card: MfcCard) -> KeyAnalysis:
                 notes=info.get("notes", ""),
             )
             matches.append(match)
+            log.debug("key %s matched %s / %s [%s] in %d slot(s)", key_hex, info["vendor"],
+                      info["system"], info["confidence"], len(unique_keys[key_hex]))
             vendor = info["vendor"].split("(")[0].strip()
             sector_count = len(unique_keys[key_hex])
             vendor_counts[vendor] = vendor_counts.get(vendor, 0) + sector_count
         else:
             unmatched.append(key_hex)
+            log.debug("key %s not in vendor database (%d slot(s))", key_hex, len(unique_keys[key_hex]))
 
     default_sectors = []
     for sector in range(card.num_sectors):
@@ -239,12 +245,18 @@ def analyze_keys(card: MfcCard) -> KeyAnalysis:
         v: c for v, c in vendor_counts.items()
         if not v.startswith(CHIP_LEVEL_VENDORS)
     }
+    excluded = sorted(set(vendor_counts) - set(pick_from))
+    log.info("vendor candidates (slot counts): %s; chip-level excluded: %s",
+             pick_from or "none", excluded or "none")
     if pick_from:
         vendor_guess = max(pick_from, key=pick_from.get)
         for m in matches:
             if m.vendor.startswith(vendor_guess):
                 system_guess = m.system
                 break
+        log.info("vendor guess: %s (system: %s)", vendor_guess, system_guess)
+    else:
+        log.info("vendor unattributed: no lock-system key matched (%d unmatched key(s))", len(unmatched))
 
     return KeyAnalysis(
         unique_keys=unique_keys,
@@ -260,9 +272,11 @@ def analyze_keys(card: MfcCard) -> KeyAnalysis:
 def load_vendor_keys(path: Path) -> dict[str, dict]:
     """Load additional vendor keys from a text file (key_hex:vendor:system per line)."""
     extra = {}
+    # A typo in this path silently yields an unattributed report, so it must be loud.
     if not path.exists():
+        log.warning("vendor key file not found: %s (no extra keys loaded)", path)
         return extra
-    for line in path.read_text().splitlines():
+    for lineno, line in enumerate(path.read_text().splitlines(), start=1):
         line = line.strip()
         if not line or line.startswith("#"):
             continue
@@ -274,4 +288,8 @@ def load_vendor_keys(path: Path) -> dict[str, dict]:
                 "system": parts[2].strip(),
                 "confidence": "possible",
             }
+        else:
+            log.warning("vendor key file %s line %d skipped, expected KEY_HEX:vendor:system: %r",
+                        path, lineno, line)
+    log.info("loaded %d vendor key(s) from %s", len(extra), path)
     return extra

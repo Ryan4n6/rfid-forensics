@@ -75,6 +75,16 @@ rfid-forensics diff card_a.json card_b.json
 rfid-forensics hexdump dump.json
 ```
 
+### Analysis log
+
+Every subcommand accepts `-v` (decisions to stderr), `-vv` (debug), and `--log-file PATH`, which writes a debug-level log of the run for the case file: command line, source SHA-256, every key match, vendor candidates and the pick (or why it is unattributed), every chunk that failed the audit checksum, duplicate records, the timestamp heuristic that fired, and where the report was written.
+
+```
+rfid-forensics analyze dump.json --format pdf -o report.pdf --log-file EV-007-analysis.log
+```
+
+Every line carries `[rfid-forensics]`. Reports always go to stdout or the `-o` file and logs never mix in. Warnings (for example a `--vendor-keys` path that does not exist) print to stderr by default.
+
 ## Supported formats
 
 - Proxmark3 JSON dumps (`.json`, from `hf mf autopwn` or `hf mf dump`)

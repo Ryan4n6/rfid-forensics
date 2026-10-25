@@ -1,6 +1,7 @@
 """Command-line interface for rfid-forensics."""
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
@@ -10,6 +11,25 @@ from .key_fingerprint import analyze_keys, load_vendor_keys, KNOWN_KEYS
 from .structure_detect import analyze_structure
 from .report import generate_report, ChainOfCustody
 from .diff import compare_dumps, format_comparison
+
+log = logging.getLogger("rfid_forensics.cli")
+
+LOG_FORMAT = "%(asctime)s [rfid-forensics] %(levelname)s %(name)s: %(message)s"
+
+
+def _setup_logging(verbose: int, log_file: str | None) -> None:
+    # Reports go to stdout, so logs always go to stderr or a file and never mix in.
+    root = logging.getLogger("rfid_forensics")
+    root.setLevel(logging.DEBUG)
+    stderr = logging.StreamHandler(sys.stderr)
+    stderr.setLevel({0: logging.WARNING, 1: logging.INFO}.get(verbose, logging.DEBUG))
+    stderr.setFormatter(logging.Formatter(LOG_FORMAT))
+    root.addHandler(stderr)
+    if log_file:
+        fh = logging.FileHandler(log_file, encoding="utf-8")
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(logging.Formatter(LOG_FORMAT))
+        root.addHandler(fh)
 
 
 def main():
@@ -21,8 +41,13 @@ def main():
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("-v", "--verbose", action="count", default=0,
+                        help="Log decisions to stderr (-v info, -vv debug)")
+    common.add_argument("--log-file", help="Write a debug-level analysis log to this file")
+
     # analyze command
-    p_analyze = subparsers.add_parser("analyze", help="Analyze a MIFARE Classic dump file")
+    p_analyze = subparsers.add_parser("analyze", parents=[common], help="Analyze a MIFARE Classic dump file")
     p_analyze.add_argument("dump", help="Path to dump file (.json, .bin, .mfd)")
     p_analyze.add_argument("-o", "--output", help="Write report to file instead of stdout")
     p_analyze.add_argument("--format", choices=["text", "json", "pdf"], default="text",
@@ -36,22 +61,22 @@ def main():
     p_analyze.add_argument("--acquired", help="Date/time card was acquired")
 
     # diff command
-    p_diff = subparsers.add_parser("diff", help="Compare two dump files")
+    p_diff = subparsers.add_parser("diff", parents=[common], help="Compare two dump files")
     p_diff.add_argument("dump_a", help="First dump file")
     p_diff.add_argument("dump_b", help="Second dump file")
     p_diff.add_argument("-o", "--output", help="Write report to file")
 
     # keys command
-    p_keys = subparsers.add_parser("keys", help="Show key analysis only")
+    p_keys = subparsers.add_parser("keys", parents=[common], help="Show key analysis only")
     p_keys.add_argument("dump", help="Path to dump file")
     p_keys.add_argument("--vendor-keys", help="Additional vendor key file")
 
     # audit command
-    p_audit = subparsers.add_parser("audit", help="Show audit log only")
+    p_audit = subparsers.add_parser("audit", parents=[common], help="Show audit log only")
     p_audit.add_argument("dump", help="Path to dump file")
 
     # hexdump command
-    p_hex = subparsers.add_parser("hexdump", help="Show raw hex of data sectors")
+    p_hex = subparsers.add_parser("hexdump", parents=[common], help="Show raw hex of data sectors")
     p_hex.add_argument("dump", help="Path to dump file")
 
     args = parser.parse_args()
@@ -59,6 +84,9 @@ def main():
     if not args.command:
         parser.print_help()
         sys.exit(1)
+
+    _setup_logging(args.verbose, args.log_file)
+    log.info("rfid-forensics %s: %s", __version__, " ".join(sys.argv[1:]))
 
     try:
         if args.command == "analyze":
@@ -72,8 +100,11 @@ def main():
         elif args.command == "hexdump":
             _cmd_hexdump(args)
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        log.debug("command %s failed", args.command, exc_info=True)
+        # The handler already printed it to stderr at WARNING level; avoid printing twice.
+        log.error("%s", e)
         sys.exit(1)
+    log.info("command %s finished", args.command)
 
 
 def _cmd_analyze(args):
@@ -101,20 +132,22 @@ def _cmd_analyze(args):
         from .pdf_report import check_reportlab, generate_pdf
 
         if not check_reportlab():
-            print("Error: PDF output requires reportlab. Install with: pip install reportlab",
-                  file=sys.stderr)
+            log.error("PDF output requires reportlab. Install with: pip install reportlab")
             sys.exit(1)
 
         output = args.output or f"rfid-report-{card.uid}.pdf"
         generate_pdf(card, key_analysis, structure, output, custody)
+        log.info("PDF report written to %s", output)
         print(f"PDF report written to {output}")
     else:
         report = generate_report(card, key_analysis, structure, custody, args.format)
 
         if args.output:
             Path(args.output).write_text(report)
+            log.info("%s report written to %s", args.format, args.output)
             print(f"Report written to {args.output}")
         else:
+            log.info("%s report written to stdout", args.format)
             print(report)
 
 
