@@ -117,6 +117,8 @@ A hotel key card recovered during a search warrant execution currently tells the
 ## Limitations
 
 - Timestamps are heuristic. "Seconds from midnight" is the most common hotel lock encoding, but the base date must be corroborated with external evidence.
+- The audit checksum identifies the record format. It is not tamper evidence: a random 8-byte chunk passes about 1 time in 256, and anyone rewriting a record can recompute it. The report states how many non-zero chunks were rejected.
+- Report wording follows the attribution: "property", "room" and "folio" language appears only when the vendor guess is a hotel lock system. Otherwise the report says "site-wide key" and "the site's lock or reader inventory".
 - Duplicate flagging only catches exact byte matches. A duplicate is shown in every table but excluded from event counts; the lock's own audit download is authoritative on whether two entries happened.
 - Vendor fingerprinting is based on known key patterns, not vendor confirmation. Keys can be reused across vendors.
 - ATQA and SAK identify the card class, not the chip manufacturer. A Fudan clone answers with the same ATQA as NXP silicon. ATQA is shown raw (block 0 byte order, LSB first) and decoded (for example `0400` is ATQA 0x0004).

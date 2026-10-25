@@ -6,7 +6,7 @@ from typing import Optional
 
 from .dump_loader import MfcCard
 from .key_fingerprint import KeyAnalysis
-from .report import ChainOfCustody, _generate_forensic_notes, _generate_leads
+from .report import ChainOfCustody, _generate_forensic_notes, _generate_leads, atqa_display
 from .structure_detect import StructureAnalysis
 
 
@@ -251,7 +251,7 @@ def generate_pdf(
     card_data = [
         ["Type", card.card_type],
         ["UID", card.uid],
-        ["ATQA", card.atqa],
+        ["ATQA", atqa_display(card)],
         ["SAK", card.sak],
         ["Sectors with data", ", ".join(str(s) for s in structure.data_sectors)],
         ["Empty sectors", f"{len(structure.empty_sectors)} of {card.num_sectors}"],

@@ -56,6 +56,8 @@ class StructureAnalysis:
     audit_sector: Optional[int] = None
     credential_sector: Optional[int] = None
     distinct_audit_count: int = 0
+    # Non-zero 8-byte chunks in data sectors that failed the checksum.
+    checksum_rejected: int = 0
 
 
 # Known hotel lock event types (from Caribe Royale decode and published research)
@@ -85,6 +87,11 @@ def verify_checksum_mod256(record: bytes) -> bool:
 
 def detect_audit_records(card: MfcCard) -> list[AuditRecord]:
     """Detect 8-byte audit records with mod-256 checksums in data sectors."""
+    return scan_audit_chunks(card)[0]
+
+
+def scan_audit_chunks(card: MfcCard) -> tuple[list[AuditRecord], int]:
+    """Return (audit records, count of non-zero chunks that failed the checksum)."""
     records = []
     rejected = 0
 
@@ -130,7 +137,7 @@ def detect_audit_records(card: MfcCard) -> list[AuditRecord]:
 
     log.info("audit scan: %d record(s) accepted, %d non-zero chunk(s) failed checksum",
              len(records), rejected)
-    return records
+    return records, rejected
 
 
 def flag_duplicate_records(records: list[AuditRecord]) -> list[AuditRecord]:
@@ -301,6 +308,15 @@ def _interpret_sak(sak: int) -> str:
     return sak_map.get(sak, f"Unknown SAK 0x{sak:02X}")
 
 
+def atqa_value(raw_hex: str) -> Optional[int]:
+    """ATQA as an integer from its stored (LSB first) hex, or None if unparseable."""
+    try:
+        raw = bytes.fromhex(raw_hex)
+    except ValueError:
+        return None
+    return int.from_bytes(raw, "little") if len(raw) == 2 else None
+
+
 def _interpret_atqa(atqa: bytes) -> str:
     # ATQA goes over the air LSB first and block 0 stores it in that order,
     # so the bytes 04 00 are ATQA 0x0004.
@@ -328,7 +344,7 @@ def analyze_structure(card: MfcCard) -> StructureAnalysis:
     all_secs = list(range(card.num_sectors))
     empty_secs = [s for s in all_secs if s not in data_secs]
 
-    audit_records = detect_audit_records(card)
+    audit_records, rejected = scan_audit_chunks(card)
     audit_records = try_timestamp_decode(audit_records)
     audit_records = flag_duplicate_records(audit_records)
     distinct = sum(1 for r in audit_records if r.duplicate_of is None)
@@ -357,4 +373,5 @@ def analyze_structure(card: MfcCard) -> StructureAnalysis:
         audit_sector=audit_sector,
         credential_sector=cred_sector,
         distinct_audit_count=distinct,
+        checksum_rejected=rejected,
     )

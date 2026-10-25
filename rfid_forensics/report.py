@@ -9,7 +9,7 @@ from typing import Optional
 
 from .dump_loader import MfcCard
 from .key_fingerprint import KeyAnalysis, UNATTRIBUTED_REASON
-from .structure_detect import StructureAnalysis
+from .structure_detect import StructureAnalysis, atqa_value
 
 
 @dataclass
@@ -96,7 +96,7 @@ def _generate_text_report(
     w("-" * 40)
     w(f"  Type:  {card.card_type}")
     w(f"  UID:   {card.uid}")
-    w(f"  ATQA:  {card.atqa}")
+    w(f"  ATQA:  {atqa_display(card)}")
     w(f"  SAK:   {card.sak}")
     w(f"  Sectors with data: {', '.join(str(s) for s in structure.data_sectors)}")
     w(f"  Empty sectors:     {len(structure.empty_sectors)} of {card.num_sectors}")
@@ -239,6 +239,18 @@ def _generate_text_report(
     return "\n".join(lines)
 
 
+def atqa_display(card: MfcCard) -> str:
+    """Raw ATQA as stored plus its decoded value, so the byte order is never ambiguous."""
+    val = atqa_value(card.atqa)
+    return f"{card.atqa} (ATQA 0x{val:04X})" if val is not None else card.atqa
+
+
+def _is_hotel(key_analysis: KeyAnalysis) -> bool:
+    # "Property", "room" and "folio" language is only earned by a hotel attribution;
+    # otherwise the report speaks about a generic site or system.
+    return bool(key_analysis.vendor_guess) and "hotel" in (key_analysis.system_guess or "").lower()
+
+
 def _generate_forensic_notes(card, key_analysis, structure):
     notes = []
 
@@ -262,16 +274,32 @@ def _generate_forensic_notes(card, key_analysis, structure):
     ]
     if master_keys:
         for k, locs in master_keys:
+            scope = (
+                "This is likely a property-wide master key. Other cards from the same property "
+                "will likely share it"
+                if _is_hotel(key_analysis) else
+                "This is likely a site-wide key. Other cards issued by the same system "
+                "will likely share it"
+            )
             notes.append(
                 f"Key {k} appears in {len(locs)} of {card.num_sectors * 2} key slots. "
-                f"This is likely a property-wide master key. Any card from the same property "
-                f"will share this key, enabling bulk card reads."
+                f"{scope}, which allows reading them without key recovery."
             )
 
-    if structure.has_audit_log:
+    if structure.audit_records:
+        # Every listed record passes the checksum because passing it is how records are
+        # found, so the note must not present that as an integrity result.
+        rejected = structure.checksum_rejected
         notes.append(
-            "Audit log records use a mod-256 checksum (sum of bytes 0 to 6). All records "
-            "in this dump have valid checksums, indicating data integrity."
+            "Audit records were identified by a mod-256 checksum (sum of bytes 0 to 6 equals "
+            "byte 7). Every listed record passes it by construction"
+            + (f"; {rejected} other non-zero 8-byte chunk{'s' if rejected != 1 else ''} in the "
+               f"data sectors did not and {'are' if rejected != 1 else 'is'} not treated as "
+               f"audit data" if rejected else "")
+            + ". A random 8-byte chunk passes by chance about 1 time in 256, so the checksum "
+            "identifies the record format but is not proof that the data was unaltered. "
+            "The SHA-256 above fixes the dump file's contents from the time of analysis; "
+            "it does not attest to the card's state before acquisition."
         )
 
     for i, r in enumerate(structure.audit_records):
@@ -321,6 +349,9 @@ def _generate_leads(card, key_analysis, structure):
             leads.append(
                 f"Lock ID 0x{lid:04X} can be cross-referenced with the property's lock "
                 f"inventory to determine the physical room/door number."
+                if _is_hotel(key_analysis) else
+                f"Lock ID 0x{lid:04X} can be cross-referenced with the site's lock or reader "
+                f"inventory to determine the physical door."
             )
 
         events = [r for r in structure.audit_records if r.timestamp_guess and r.duplicate_of is None]
@@ -335,11 +366,17 @@ def _generate_leads(card, key_analysis, structure):
         if len(locs) > card.num_sectors // 2 and k != "FFFFFFFFFFFF"
     ]
     if master_keys:
-        leads.append(
-            f"Property master key ({master_keys[0]}) is shared across all locks. "
-            f"Additional cards from this property can be read using this key without "
-            f"running key recovery attacks."
-        )
+        if _is_hotel(key_analysis):
+            leads.append(
+                f"Property master key ({master_keys[0]}) is likely shared by every card "
+                f"this property issues. Additional cards from this property can likely be "
+                f"read with it without running key recovery attacks."
+            )
+        else:
+            leads.append(
+                f"Site-wide key ({master_keys[0]}) is likely shared by other cards from the "
+                f"same system. Try it first on related cards before running key recovery attacks."
+            )
 
     return leads
 
@@ -347,6 +384,7 @@ def _generate_leads(card, key_analysis, structure):
 def _generate_json_report(card, key_analysis, structure, custody):
     import json
 
+    atqa_int = atqa_value(card.atqa)
     report = {
         "tool": "rfid-forensics",
         "version": "0.1.0",
@@ -359,6 +397,7 @@ def _generate_json_report(card, key_analysis, structure, custody):
             "type": card.card_type,
             "uid": card.uid,
             "atqa": card.atqa,
+            "atqa_value": f"0x{atqa_int:04X}" if atqa_int is not None else None,
             "sak": card.sak,
             "sectors_with_data": structure.data_sectors,
             "empty_sectors": len(structure.empty_sectors),

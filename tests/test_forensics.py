@@ -2,6 +2,7 @@
 
 import json
 import logging
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -384,6 +385,77 @@ class TestLogging:
             capture_output=True, text=True, check=True,
         )
         assert out.stderr == ""
+
+
+def _report(card):
+    return generate_report(card, analyze_keys(card), analyze_structure(card))
+
+
+class TestReportWording:
+    """Issue #5: forensic notes must not claim more than the analysis did."""
+
+    def test_checksum_note_not_circular(self, card_json):
+        report = _report(card_json)
+        assert "indicating data integrity" not in report
+        assert "identified by a mod-256 checksum" in report
+        assert "9 other non-zero 8-byte chunks" in report
+        assert "not proof that the data was unaltered" in report
+
+    def test_rejected_count_on_structure(self, card_json):
+        assert analyze_structure(card_json).checksum_rejected == 9
+
+    def test_hotel_card_keeps_property_wording(self, card_json):
+        report = _report(card_json)
+        assert "property-wide master key" in report
+        assert "shared across all locks" not in report
+
+    def test_unattributed_card_uses_site_wording(self):
+        report = _report(load_dump(SYNTHETIC))
+        assert "property" not in report.lower()
+        assert "site-wide key" in report
+
+    def test_header_atqa_decoded(self, card_json):
+        assert "ATQA:  0400 (ATQA 0x0004)" in _report(card_json)
+        data = json.loads(generate_report(
+            card_json, analyze_keys(card_json), analyze_structure(card_json), output_format="json"))
+        assert data["card"]["atqa"] == "0400"
+        assert data["card"]["atqa_value"] == "0x0004"
+
+
+@pytest.mark.skipif(shutil.which("pdftotext") is None, reason="pdftotext (poppler) not installed")
+class TestPdfContent:
+    """Issue #5: assert on rendered PDF text, not just that a file was written."""
+
+    def _pdf_text(self, card, tmp_path, custody=None):
+        from rfid_forensics.pdf_report import check_reportlab, generate_pdf
+        if not check_reportlab():
+            pytest.skip("reportlab not installed")
+        pdf = tmp_path / "r.pdf"
+        generate_pdf(card, analyze_keys(card), analyze_structure(card), str(pdf), custody)
+        out = subprocess.run(["pdftotext", "-layout", str(pdf), "-"],
+                             capture_output=True, text=True, check=True)
+        return out.stdout
+
+    def test_reference_card_pdf(self, card_json, tmp_path):
+        text = self._pdf_text(card_json, tmp_path)
+        assert "6 records (5 distinct, 1 exact duplicate)" in text
+        assert "[DUP of #3]" in text
+        assert "valid (dup #3)" in text
+        assert "0400 (ATQA 0x0004)" in text
+        assert "Hotel lock system" in text
+        assert "identified by a mod-256 checksum" in text
+
+    def test_synthetic_card_pdf(self, tmp_path):
+        text = self._pdf_text(load_dump(SYNTHETIC), tmp_path)
+        assert "Unattributed" in text
+        assert "DUP" not in text
+        assert "site-wide key" in text
+
+    def test_custody_in_pdf(self, card_json, tmp_path):
+        custody = ChainOfCustody(examiner_name="Det. Test", case_number="2026-CR-0001")
+        text = self._pdf_text(card_json, tmp_path, custody)
+        assert "Det. Test" in text
+        assert "2026-CR-0001" in text
 
 
 class TestDiff:
