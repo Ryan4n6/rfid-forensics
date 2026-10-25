@@ -8,6 +8,7 @@ import pytest
 from rfid_forensics.dump_loader import load_dump, load_json, load_bin
 from rfid_forensics.key_fingerprint import analyze_keys
 from rfid_forensics.structure_detect import (
+    _interpret_atqa,
     analyze_structure,
     detect_audit_records,
     verify_checksum_mod256,
@@ -289,6 +290,34 @@ class TestVendorAttribution:
 
     def test_reference_card_still_attributed(self, card_json):
         assert analyze_keys(card_json).vendor_guess == "Hotel lock system"
+
+
+class TestAtqa:
+    """Issue #3: ATQA is stored LSB first in block 0."""
+
+    def _atqa_field(self, card):
+        return next(f for f in analyze_structure(card).data_fields if f.label == "ATQA")
+
+    def test_reference_card_atqa(self, card_json):
+        assert card_json.blocks[0][6:8] == bytes.fromhex("0400")
+        interp = self._atqa_field(card_json).interpretation
+        assert "0x0004" in interp
+        assert "MIFARE Classic 1K" in interp
+        assert "4-byte UID" in interp
+
+    def test_synthetic_matches_proxmark_byte_order(self):
+        card = load_dump(SYNTHETIC)
+        assert card.blocks[0][6:8] == bytes.fromhex("0400")
+        assert card.atqa == "0400"
+        assert "MIFARE Classic 1K" in self._atqa_field(card).interpretation
+
+    def test_decoder_values(self):
+        assert "MIFARE Classic 4K" in _interpret_atqa(bytes.fromhex("0200"))
+        assert "7-byte UID" in _interpret_atqa(bytes.fromhex("4400"))
+        assert "unrecognized" in _interpret_atqa(bytes.fromhex("0400")[::-1])
+
+    def test_no_manufacturer_claim(self, card_json):
+        assert "NXP" not in self._atqa_field(card_json).interpretation
 
 
 class TestDiff:

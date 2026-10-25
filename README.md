@@ -109,6 +109,7 @@ A hotel key card recovered during a search warrant execution currently tells the
 - Timestamps are heuristic. "Seconds from midnight" is the most common hotel lock encoding, but the base date must be corroborated with external evidence.
 - Duplicate flagging only catches exact byte matches. A duplicate is shown in every table but excluded from event counts; the lock's own audit download is authoritative on whether two entries happened.
 - Vendor fingerprinting is based on known key patterns, not vendor confirmation. Keys can be reused across vendors.
+- ATQA and SAK identify the card class, not the chip manufacturer. A Fudan clone answers with the same ATQA as NXP silicon. ATQA is shown raw (block 0 byte order, LSB first) and decoded (for example `0400` is ATQA 0x0004).
 - MIFARE Classic 1K/4K only. DESFire, MIFARE Plus, and NTAG support planned.
 - Room numbers are not stored in plaintext on properly designed hotel cards. The tool identifies the credential token but cannot decode it without the lock's key table.
 

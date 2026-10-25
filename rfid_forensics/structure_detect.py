@@ -277,16 +277,24 @@ def _interpret_sak(sak: int) -> str:
 
 
 def _interpret_atqa(atqa: bytes) -> str:
-    val = int.from_bytes(atqa, "big")
+    # ATQA goes over the air LSB first and block 0 stores it in that order,
+    # so the bytes 04 00 are ATQA 0x0004.
+    val = int.from_bytes(atqa, "little")
+    # ATQA cannot tell NXP silicon from a clone, so labels name the card class only.
     atqa_map = {
-        0x0004: "NXP MIFARE Classic 1K",
-        0x0002: "NXP MIFARE Classic 4K",
-        0x0044: "NXP MIFARE Classic 1K (UID not complete)",
-        0x0042: "NXP MIFARE Classic 4K (UID not complete)",
-        0x0344: "NXP MIFARE DESFire",
-        0x0304: "NXP MIFARE DESFire",
+        0x0004: "MIFARE Classic 1K",
+        0x0002: "MIFARE Classic 4K",
+        0x0044: "MIFARE Classic 1K, Ultralight, or NTAG",
+        0x0042: "MIFARE Classic 4K",
+        0x0344: "MIFARE DESFire",
     }
-    return atqa_map.get(val, f"ATQA 0x{val:04X}")
+    # Bits 7 to 6 of the low byte encode UID size (ISO 14443-3).
+    uid_size = {0: "4-byte UID", 1: "7-byte UID", 2: "10-byte UID"}.get(
+        (val >> 6) & 0x3, "reserved UID size bits")
+    label = atqa_map.get(val)
+    if label:
+        return f"ATQA 0x{val:04X}: consistent with {label}, {uid_size}"
+    return f"ATQA 0x{val:04X}: unrecognized, {uid_size}"
 
 
 def analyze_structure(card: MfcCard) -> StructureAnalysis:
