@@ -363,19 +363,27 @@ def generate_pdf(
         elements.append(Paragraph("AUDIT LOG", s_heading))
 
         lock_ids = set(r.lock_id for r in structure.audit_records)
+        dup_count = len(structure.audit_records) - structure.distinct_audit_count
+        dup_text = (
+            f" ({structure.distinct_audit_count} distinct, {dup_count} exact duplicate"
+            f"{'s' if dup_count > 1 else ''})" if dup_count else ""
+        )
         elements.append(Paragraph(
-            f"<b>{len(structure.audit_records)} records</b> found in sector {structure.audit_sector}. "
+            f"<b>{len(structure.audit_records)} records</b>{dup_text} found in sector {structure.audit_sector}. "
             f"Lock ID(s): {', '.join(f'0x{lid:04X}' for lid in sorted(lock_ids))}",
             s_body,
         ))
         elements.append(Spacer(1, 4))
 
-        audit_rows = [["Time", "Event", "Description", "Lock", "Checksum"]]
-        for r in structure.audit_records:
+        audit_rows = [["#", "Time", "Event", "Description", "Lock", "Checksum"]]
+        for i, r in enumerate(structure.audit_records):
             time_str = r.timestamp_guess or f"cnt={r.counter}"
             label = r.event_label or f"Unknown (0x{r.event_type:02X})"
+            if r.duplicate_of is not None:
+                label += f" [DUP of #{r.duplicate_of}]"
             chk = "OK" if r.checksum_valid else "BAD"
             audit_rows.append([
+                str(i),
                 time_str,
                 f"0x{r.event_type:02X}",
                 label,
@@ -386,7 +394,7 @@ def generate_pdf(
         avail_w = PAGE_W - 2 * MARGIN
         audit_table = Table(
             audit_rows,
-            colWidths=[0.9 * inch, 0.6 * inch, avail_w - 3.2 * inch, 0.7 * inch, 0.7 * inch],
+            colWidths=[0.3 * inch, 0.9 * inch, 0.6 * inch, avail_w - 3.5 * inch, 0.7 * inch, 0.7 * inch],
             repeatRows=1,
         )
 
@@ -427,13 +435,14 @@ def generate_pdf(
                 str(i),
                 f"Blk {r.block}+{r.offset}",
                 hex_str,
-                "valid" if r.checksum_valid else "INVALID",
+                ("valid" if r.checksum_valid else "INVALID")
+                + (f" (dup #{r.duplicate_of})" if r.duplicate_of is not None else ""),
             ])
 
         avail_w = PAGE_W - 2 * MARGIN
         raw_table = Table(
             raw_rows,
-            colWidths=[0.3 * inch, 0.9 * inch, avail_w - 2.0 * inch, 0.8 * inch],
+            colWidths=[0.3 * inch, 0.9 * inch, avail_w - 2.4 * inch, 1.2 * inch],
         )
         raw_table.setStyle(HEX_TABLE_STYLE)
         elements.append(raw_table)

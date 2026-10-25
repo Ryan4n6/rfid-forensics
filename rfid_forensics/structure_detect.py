@@ -22,6 +22,8 @@ class AuditRecord:
     checksum_valid: bool
     timestamp_guess: Optional[str] = None
     event_label: Optional[str] = None
+    # Index of the first byte-identical record; None if this record is unique.
+    duplicate_of: Optional[int] = None
 
 
 @dataclass
@@ -50,6 +52,7 @@ class StructureAnalysis:
     has_audit_log: bool = False
     audit_sector: Optional[int] = None
     credential_sector: Optional[int] = None
+    distinct_audit_count: int = 0
 
 
 # Known hotel lock event types (from Caribe Royale decode and published research)
@@ -114,6 +117,20 @@ def detect_audit_records(card: MfcCard) -> list[AuditRecord]:
                     )
                     records.append(record)
 
+    return records
+
+
+def flag_duplicate_records(records: list[AuditRecord]) -> list[AuditRecord]:
+    """Mark records that are byte-identical to an earlier record."""
+    # Same lock, same second, same event and param is far more consistent with
+    # the lock re-writing a slot than with two entries, so the duplicate stays
+    # visible but is not counted as a separate event.
+    first_seen: dict[bytes, int] = {}
+    for i, r in enumerate(records):
+        if r.raw in first_seen:
+            r.duplicate_of = first_seen[r.raw]
+        else:
+            first_seen[r.raw] = i
     return records
 
 
@@ -280,8 +297,11 @@ def analyze_structure(card: MfcCard) -> StructureAnalysis:
 
     audit_records = detect_audit_records(card)
     audit_records = try_timestamp_decode(audit_records)
+    audit_records = flag_duplicate_records(audit_records)
+    distinct = sum(1 for r in audit_records if r.duplicate_of is None)
 
-    has_audit = len(audit_records) >= 2
+    # Two copies of one record is not a log, so presence is judged on distinct records.
+    has_audit = distinct >= 2
     audit_sector = None
     if audit_records:
         sector_counts: dict[int, int] = {}
@@ -302,4 +322,5 @@ def analyze_structure(card: MfcCard) -> StructureAnalysis:
         has_audit_log=has_audit,
         audit_sector=audit_sector,
         credential_sector=cred_sector,
+        distinct_audit_count=distinct,
     )

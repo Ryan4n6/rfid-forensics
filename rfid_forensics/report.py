@@ -167,7 +167,13 @@ def _generate_text_report(
     if structure.has_audit_log:
         w("AUDIT LOG")
         w("-" * 40)
-        w(f"  Records found: {len(structure.audit_records)}")
+        dup_count = len(structure.audit_records) - structure.distinct_audit_count
+        if dup_count:
+            w(f"  Records found: {len(structure.audit_records)} "
+              f"({structure.distinct_audit_count} distinct, {dup_count} exact duplicate"
+              f"{'s' if dup_count > 1 else ''})")
+        else:
+            w(f"  Records found: {len(structure.audit_records)}")
         if structure.audit_sector is not None:
             w(f"  Primary sector: {structure.audit_sector}")
 
@@ -177,14 +183,15 @@ def _generate_text_report(
         w("")
 
         w("  Timeline:")
-        w(f"  {'Time':<14} {'Event':>6} {'Label':<40} {'Lock':>8}")
-        w(f"  {'-'*14} {'-'*6} {'-'*40} {'-'*8}")
+        w(f"  {'#':<4}{'Time':<14} {'Event':<6} {'Label':<44} {'Lock':<8}")
+        w(f"  {'-'*3} {'-'*14} {'-'*6} {'-'*44} {'-'*8}")
 
-        for r in structure.audit_records:
+        for i, r in enumerate(structure.audit_records):
             time_str = r.timestamp_guess or f"counter={r.counter}"
             label = r.event_label or f"Unknown (0x{r.event_type:02X})"
             chk = "OK" if r.checksum_valid else "BAD"
-            w(f"  {time_str:<14} 0x{r.event_type:02X}   {label:<40} 0x{r.lock_id:04X}  [{chk}]")
+            dup = f"  DUP of [{r.duplicate_of}]" if r.duplicate_of is not None else ""
+            w(f"  [{i}] {time_str:<14} 0x{r.event_type:02X}   {label:<44} 0x{r.lock_id:04X}  [{chk}]{dup}")
 
         w("")
         w("  NOTE: Timestamps are heuristic. 'Seconds from midnight' is the most")
@@ -195,7 +202,8 @@ def _generate_text_report(
         w("  Raw audit records:")
         for i, r in enumerate(structure.audit_records):
             hex_str = " ".join(f"{b:02X}" for b in r.raw)
-            w(f"    [{i}] Block {r.block}+{r.offset}: {hex_str}  checksum={'valid' if r.checksum_valid else 'INVALID'}")
+            dup = f"  (duplicate of [{r.duplicate_of}])" if r.duplicate_of is not None else ""
+            w(f"    [{i}] Block {r.block}+{r.offset}: {hex_str}  checksum={'valid' if r.checksum_valid else 'INVALID'}{dup}")
         w("")
 
     elif structure.audit_records:
@@ -262,6 +270,15 @@ def _generate_forensic_notes(card, key_analysis, structure):
             "in this dump have valid checksums, indicating data integrity."
         )
 
+    for i, r in enumerate(structure.audit_records):
+        if r.duplicate_of is not None:
+            notes.append(
+                f"Audit record [{i}] is a byte-for-byte duplicate of record [{r.duplicate_of}] "
+                f"(same lock, counter, event, and parameter). This is consistent with the lock "
+                f"writing the same entry twice, not with a second entry. Count it as one event "
+                f"unless the lock's own audit download shows two."
+            )
+
     cred_blk = card.blocks.get(1, b'\x00' * 16)
     if cred_blk != b'\x00' * 16:
         notes.append(
@@ -302,10 +319,10 @@ def _generate_leads(card, key_analysis, structure):
                 f"inventory to determine the physical room/door number."
             )
 
-        events = [r for r in structure.audit_records if r.timestamp_guess]
+        events = [r for r in structure.audit_records if r.timestamp_guess and r.duplicate_of is None]
         if events:
             leads.append(
-                f"Card shows {len(events)} timestamped events. Cross-reference with "
+                f"Card shows {len(events)} distinct timestamped events. Cross-reference with "
                 f"surveillance footage, access logs, and guest folio to build a timeline."
             )
 
@@ -362,16 +379,19 @@ def _generate_json_report(card, key_analysis, structure, custody):
         "audit_log": {
             "present": structure.has_audit_log,
             "record_count": len(structure.audit_records),
+            "distinct_count": structure.distinct_audit_count,
             "records": [
                 {
+                    "index": i,
                     "lock_id": f"0x{r.lock_id:04X}",
                     "time": r.timestamp_guess,
                     "event_type": f"0x{r.event_type:02X}",
                     "event_label": r.event_label,
                     "checksum_valid": r.checksum_valid,
                     "raw_hex": r.raw.hex(),
+                    "duplicate_of": r.duplicate_of,
                 }
-                for r in structure.audit_records
+                for i, r in enumerate(structure.audit_records)
             ],
         },
     }

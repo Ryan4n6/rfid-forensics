@@ -218,6 +218,42 @@ class TestReport:
         assert Path(result).stat().st_size > 0
 
 
+class TestDuplicateRecords:
+    """Issue #1: byte-identical audit records must not count as separate events."""
+
+    def test_duplicate_flagged(self, card_json):
+        structure = analyze_structure(card_json)
+        recs = structure.audit_records
+        assert len(recs) == 6
+        assert recs[4].raw == recs[3].raw
+        assert recs[4].duplicate_of == 3
+        assert all(r.duplicate_of is None for i, r in enumerate(recs) if i != 4)
+
+    def test_distinct_count(self, card_json):
+        structure = analyze_structure(card_json)
+        assert structure.distinct_audit_count == 5
+
+    def test_text_report_marks_duplicate(self, card_json):
+        report = generate_report(card_json, analyze_keys(card_json), analyze_structure(card_json))
+        assert "5 distinct, 1 exact duplicate" in report
+        assert "DUP of [3]" in report
+        assert "5 distinct timestamped events" in report
+        assert "byte-for-byte duplicate of record [3]" in report
+
+    def test_json_report_marks_duplicate(self, card_json):
+        data = json.loads(generate_report(
+            card_json, analyze_keys(card_json), analyze_structure(card_json), output_format="json"))
+        assert data["audit_log"]["record_count"] == 6
+        assert data["audit_log"]["distinct_count"] == 5
+        assert data["audit_log"]["records"][4]["duplicate_of"] == 3
+        assert data["audit_log"]["records"][3]["duplicate_of"] is None
+
+    def test_no_duplicates_on_synthetic(self):
+        card = load_dump(Path(__file__).parent.parent / "examples" / "synthetic-hotel-card.json")
+        structure = analyze_structure(card)
+        assert structure.distinct_audit_count == len(structure.audit_records) == 6
+
+
 class TestDiff:
     def test_self_diff(self, card_json):
         """Comparing a card to itself should show no differences."""

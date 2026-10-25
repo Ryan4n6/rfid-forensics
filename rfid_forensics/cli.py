@@ -169,19 +169,26 @@ def _cmd_audit(args):
         print("No audit records found.")
         return
 
-    print(f"Audit records: {len(structure.audit_records)}")
+    total = len(structure.audit_records)
+    dup_count = total - structure.distinct_audit_count
+    if dup_count:
+        print(f"Audit records: {total} ({structure.distinct_audit_count} distinct, "
+              f"{dup_count} exact duplicate{'s' if dup_count > 1 else ''})")
+    else:
+        print(f"Audit records: {total}")
     lock_ids = set(r.lock_id for r in structure.audit_records)
     print(f"Lock IDs: {', '.join(f'0x{lid:04X}' for lid in sorted(lock_ids))}")
     print()
 
-    print(f"{'Time':<14} {'Event':>6} {'Label':<40} {'Lock':>8} {'Chk':>5}")
-    print(f"{'-'*14} {'-'*6} {'-'*40} {'-'*8} {'-'*5}")
+    print(f"{'#':<4}{'Time':<14} {'Event':<6} {'Label':<44} {'Lock':<7} {'Chk':<4}")
+    print(f"{'-'*3} {'-'*14} {'-'*6} {'-'*44} {'-'*7} {'-'*4}")
 
-    for r in structure.audit_records:
+    for i, r in enumerate(structure.audit_records):
         time_str = r.timestamp_guess or f"cnt={r.counter}"
         label = r.event_label or f"Unknown (0x{r.event_type:02X})"
         chk = "OK" if r.checksum_valid else "BAD"
-        print(f"{time_str:<14} 0x{r.event_type:02X}   {label:<40} 0x{r.lock_id:04X}  {chk}")
+        dup = f"  DUP of [{r.duplicate_of}]" if r.duplicate_of is not None else ""
+        print(f"[{i}] {time_str:<14} 0x{r.event_type:02X}   {label:<44} 0x{r.lock_id:04X}  {chk}{dup}")
 
 
 def _cmd_hexdump(args):

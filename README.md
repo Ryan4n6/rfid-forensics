@@ -8,6 +8,7 @@ Built for law enforcement digital forensics. No existing tool does this.
 
 - **Vendor fingerprinting**: Matches key patterns against a database of known lock vendors, transit systems, and access control manufacturers
 - **Audit log detection**: Finds timestamped event records (door opens, card programs, failures) with automatic checksum validation
+- **Duplicate detection**: Byte-identical audit records are flagged as duplicates of the first occurrence and are not counted as separate events
 - **Timestamp decoding**: Heuristic decode of counter fields as wall-clock times
 - **Credential identification**: Identifies which sector holds the access authorization token
 - **Chain of custody**: Full examiner metadata, SHA-256 file hashing, acquisition method documentation
@@ -95,7 +96,7 @@ Add your own keys with `--vendor-keys file.txt` (format: `KEY_HEX:vendor:system`
 
 A hotel key card recovered during a search warrant execution currently tells the investigator nothing without specialized knowledge. This tool bridges that gap:
 
-1. **Triage**: Card recovered at scene. Examiner runs `rfid-forensics analyze dump.json`. Report says "Hotel lock system, 6 door events between 15:33 and 16:18, lock ID 0xAE43."
+1. **Triage**: Card recovered at scene. Examiner runs `rfid-forensics analyze dump.json`. Report says "Hotel lock system, lock ID 0xAE43, 6 audit records (5 distinct): card encoded at 15:33, three door opens between 15:38 and 16:18, one exact duplicate flagged."
 
 2. **Corroboration**: Investigator subpoenas the hotel PMS and lock audit trail. Card's onboard audit log provides independent corroboration of server-side records.
 
@@ -104,6 +105,7 @@ A hotel key card recovered during a search warrant execution currently tells the
 ## Limitations
 
 - Timestamps are heuristic. "Seconds from midnight" is the most common hotel lock encoding, but the base date must be corroborated with external evidence.
+- Duplicate flagging only catches exact byte matches. A duplicate is shown in every table but excluded from event counts; the lock's own audit download is authoritative on whether two entries happened.
 - Vendor fingerprinting is based on known key patterns, not vendor confirmation. Keys can be reused across vendors.
 - MIFARE Classic 1K/4K only. DESFire, MIFARE Plus, and NTAG support planned.
 - Room numbers are not stored in plaintext on properly designed hotel cards. The tool identifies the credential token but cannot decode it without the lock's key table.
