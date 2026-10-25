@@ -147,6 +147,8 @@ def _cmd_keys(args):
 
     if analysis.vendor_guess:
         print(f"Probable vendor: {analysis.vendor_guess}")
+    else:
+        print("Probable vendor: Unattributed")
     if analysis.system_guess:
         print(f"Probable system: {analysis.system_guess}")
     print()

@@ -90,6 +90,8 @@ The tool ships with known keys for:
 - **Transit systems** (various)
 - **Vending/payment** systems
 
+Chip-level keys (NXP factory defaults, transport and MAD keys, Fudan clone backdoor keys) are reported as matches but never produce a vendor attribution: they identify the silicon or an un-rekeyed card, not the lock system. A card whose only matches are chip-level keys reports **Unattributed** with the reason.
+
 Add your own keys with `--vendor-keys file.txt` (format: `KEY_HEX:vendor:system` per line).
 
 ## How it works

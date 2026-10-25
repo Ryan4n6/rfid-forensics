@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from .dump_loader import MfcCard
-from .key_fingerprint import KeyAnalysis
+from .key_fingerprint import KeyAnalysis, UNATTRIBUTED_REASON
 from .structure_detect import StructureAnalysis
 
 
@@ -109,6 +109,8 @@ def _generate_text_report(
     w("-" * 40)
     if key_analysis.vendor_guess:
         w(f"  Probable vendor:  {key_analysis.vendor_guess}")
+    else:
+        w("  Probable vendor:  Unattributed")
     if key_analysis.system_guess:
         w(f"  Probable system:  {key_analysis.system_guess}")
     w(f"  Unique keys:      {len(key_analysis.unique_keys)}")
@@ -245,6 +247,8 @@ def _generate_forensic_notes(card, key_analysis, structure):
             f"Key pattern matches {key_analysis.vendor_guess}. This is a heuristic match "
             f"based on known key databases, not a vendor confirmation."
         )
+    else:
+        notes.append(UNATTRIBUTED_REASON)
 
     if key_analysis.default_key_sectors:
         notes.append(
@@ -362,10 +366,12 @@ def _generate_json_report(card, key_analysis, structure, custody):
         "vendor": {
             "guess": key_analysis.vendor_guess,
             "system": key_analysis.system_guess,
+            # startswith("") matches everything, so a null guess must short-circuit.
             "confidence": next(
-                (m.confidence for m in key_analysis.matches if m.vendor.startswith(key_analysis.vendor_guess or "")),
+                (m.confidence for m in key_analysis.matches if m.vendor.startswith(key_analysis.vendor_guess)),
                 None,
-            ),
+            ) if key_analysis.vendor_guess else None,
+            "reason": None if key_analysis.vendor_guess else UNATTRIBUTED_REASON,
         },
         "keys": {
             "unique_count": len(key_analysis.unique_keys),

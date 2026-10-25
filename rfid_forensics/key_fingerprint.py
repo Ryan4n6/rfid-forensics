@@ -163,6 +163,18 @@ KNOWN_KEYS: dict[str, dict] = {
 }
 
 
+# Chip-level keys (factory defaults, transport, MAD, clone backdoors) say who made
+# the silicon or that nobody re-keyed the card. They never say who built the lock
+# system, so they are shown as matches but never drive the vendor guess.
+CHIP_LEVEL_VENDORS = ("NXP", "Fudan")
+
+UNATTRIBUTED_REASON = (
+    "No key matched a known lock or access-control vendor. Factory default, transport, "
+    "and clone backdoor keys identify the chip, not the lock system, and are not used "
+    "for attribution."
+)
+
+
 @dataclass
 class KeyAnalysis:
     """Full key analysis of a card."""
@@ -223,11 +235,10 @@ def analyze_keys(card: MfcCard) -> KeyAnalysis:
 
     vendor_guess = None
     system_guess = None
-    non_default_vendors = {
+    pick_from = {
         v: c for v, c in vendor_counts.items()
-        if v not in ("NXP", "NXP (factory default)", "NXP (zeroed)")
+        if not v.startswith(CHIP_LEVEL_VENDORS)
     }
-    pick_from = non_default_vendors or vendor_counts
     if pick_from:
         vendor_guess = max(pick_from, key=pick_from.get)
         for m in matches:

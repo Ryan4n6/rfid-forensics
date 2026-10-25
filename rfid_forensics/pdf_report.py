@@ -279,6 +279,8 @@ def generate_pdf(
     vf_lines = []
     if key_analysis.vendor_guess:
         vf_lines.append(f"<b>Probable vendor:</b> {key_analysis.vendor_guess}")
+    else:
+        vf_lines.append("<b>Probable vendor:</b> Unattributed")
     if key_analysis.system_guess:
         vf_lines.append(f"<b>Probable system:</b> {key_analysis.system_guess}")
     vf_lines.append(f"<b>Unique keys:</b> {len(key_analysis.unique_keys)}")

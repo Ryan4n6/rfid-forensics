@@ -249,9 +249,46 @@ class TestDuplicateRecords:
         assert data["audit_log"]["records"][3]["duplicate_of"] is None
 
     def test_no_duplicates_on_synthetic(self):
-        card = load_dump(Path(__file__).parent.parent / "examples" / "synthetic-hotel-card.json")
-        structure = analyze_structure(card)
+        structure = analyze_structure(load_dump(SYNTHETIC))
         assert structure.distinct_audit_count == len(structure.audit_records) == 6
+
+
+SYNTHETIC = Path(__file__).parent.parent / "examples" / "synthetic-hotel-card.json"
+
+
+class TestVendorAttribution:
+    """Issue #2: chip-level keys (defaults, transport, clone backdoors) never attribute a vendor."""
+
+    def test_default_key_only_is_unattributed(self):
+        analysis = analyze_keys(load_dump(SYNTHETIC))
+        assert analysis.vendor_guess is None
+        assert analysis.system_guess is None
+        assert "FFFFFFFFFFFF" in [m.key_hex for m in analysis.matches]
+
+    def test_text_report_says_unattributed(self):
+        card = load_dump(SYNTHETIC)
+        report = generate_report(card, analyze_keys(card), analyze_structure(card))
+        assert "Probable vendor:  Unattributed" in report
+        assert "matches NXP" not in report
+        assert "identify the chip, not the lock system" in report
+
+    def test_json_null_vendor_and_confidence(self):
+        card = load_dump(SYNTHETIC)
+        data = json.loads(generate_report(
+            card, analyze_keys(card), analyze_structure(card), output_format="json"))
+        assert data["vendor"]["guess"] is None
+        assert data["vendor"]["confidence"] is None
+        assert data["vendor"]["reason"]
+
+    def test_fudan_backdoor_key_does_not_attribute(self, card_json):
+        card_json.sector_keys[1]["KeyA"] = "A396EFA4E24F"
+        for s in range(card_json.num_sectors):
+            if card_json.sector_keys[s].get("KeyA", "").upper() == "6AF1A9F09615":
+                card_json.sector_keys[s]["KeyA"] = "FFFFFFFFFFFF"
+        assert analyze_keys(card_json).vendor_guess is None
+
+    def test_reference_card_still_attributed(self, card_json):
+        assert analyze_keys(card_json).vendor_guess == "Hotel lock system"
 
 
 class TestDiff:
