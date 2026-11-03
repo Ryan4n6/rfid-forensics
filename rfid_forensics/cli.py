@@ -7,9 +7,11 @@ from pathlib import Path
 
 from . import __version__
 from .dump_loader import load_dump
+from .desfire_loader import load_desfire
 from .key_fingerprint import analyze_keys, load_vendor_keys, KNOWN_KEYS
 from .structure_detect import analyze_structure
 from .report import generate_report, ChainOfCustody
+from .desfire_report import generate_desfire_report
 from .diff import compare_dumps, format_comparison
 
 log = logging.getLogger("rfid_forensics.cli")
@@ -79,6 +81,13 @@ def main():
     p_hex = subparsers.add_parser("hexdump", parents=[common], help="Show raw hex of data sectors")
     p_hex.add_argument("dump", help="Path to dump file")
 
+    # desfire command
+    p_desfire = subparsers.add_parser("desfire", parents=[common], help="Analyze a DESFire dump file")
+    p_desfire.add_argument("dump", help="Path to DESFire JSON dump file")
+    p_desfire.add_argument("-o", "--output", help="Write report to file instead of stdout")
+    p_desfire.add_argument("--format", choices=["text", "json"], default="text",
+                           help="Output format (default: text)")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -99,6 +108,8 @@ def main():
             _cmd_audit(args)
         elif args.command == "hexdump":
             _cmd_hexdump(args)
+        elif args.command == "desfire":
+            _cmd_desfire(args)
     except Exception as e:
         log.debug("command %s failed", args.command, exc_info=True)
         # The handler already printed it to stderr at WARNING level; avoid printing twice.
@@ -238,6 +249,19 @@ def _cmd_hexdump(args):
                 ascii_str = "".join(chr(b) if 0x20 <= b <= 0x7E else "." for b in data)
                 print(f"  Block {blk:2d}: {hex_str}  |{ascii_str}|")
         print()
+
+
+def _cmd_desfire(args):
+    card = load_desfire(args.dump)
+    report = generate_desfire_report(card, args.format)
+
+    if args.output:
+        Path(args.output).write_text(report)
+        log.info("%s report written to %s", args.format, args.output)
+        print(f"Report written to {args.output}")
+    else:
+        log.info("%s report written to stdout", args.format)
+        print(report)
 
 
 if __name__ == "__main__":
