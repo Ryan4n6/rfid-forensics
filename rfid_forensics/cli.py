@@ -8,10 +8,12 @@ from pathlib import Path
 from . import __version__
 from .dump_loader import load_dump
 from .desfire_loader import load_desfire
+from .ultralight_loader import load_ultralight
 from .key_fingerprint import analyze_keys, load_vendor_keys, KNOWN_KEYS
 from .structure_detect import analyze_structure
 from .report import generate_report, ChainOfCustody
 from .desfire_report import generate_desfire_report
+from .ultralight_report import generate_ultralight_report
 from .diff import compare_dumps, format_comparison
 
 log = logging.getLogger("rfid_forensics.cli")
@@ -88,6 +90,13 @@ def main():
     p_desfire.add_argument("--format", choices=["text", "json"], default="text",
                            help="Output format (default: text)")
 
+    # ultralight command
+    p_ul = subparsers.add_parser("ultralight", parents=[common], help="Analyze an Ultralight/Ultralight C dump")
+    p_ul.add_argument("dump", help="Path to Ultralight dump file (.json or .bin)")
+    p_ul.add_argument("-o", "--output", help="Write report to file instead of stdout")
+    p_ul.add_argument("--format", choices=["text", "json"], default="text",
+                      help="Output format (default: text)")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -110,6 +119,8 @@ def main():
             _cmd_hexdump(args)
         elif args.command == "desfire":
             _cmd_desfire(args)
+        elif args.command == "ultralight":
+            _cmd_ultralight(args)
     except Exception as e:
         log.debug("command %s failed", args.command, exc_info=True)
         # The handler already printed it to stderr at WARNING level; avoid printing twice.
@@ -254,6 +265,19 @@ def _cmd_hexdump(args):
 def _cmd_desfire(args):
     card = load_desfire(args.dump)
     report = generate_desfire_report(card, args.format)
+
+    if args.output:
+        Path(args.output).write_text(report)
+        log.info("%s report written to %s", args.format, args.output)
+        print(f"Report written to {args.output}")
+    else:
+        log.info("%s report written to stdout", args.format)
+        print(report)
+
+
+def _cmd_ultralight(args):
+    card = load_ultralight(args.dump)
+    report = generate_ultralight_report(card, args.format)
 
     if args.output:
         Path(args.output).write_text(report)
